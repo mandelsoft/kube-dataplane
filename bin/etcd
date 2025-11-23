@@ -1,0 +1,72 @@
+#!/bin/bash -e
+
+dir="$(dirname "${BASH_SOURCE[0]}")/.."
+
+configure()
+{
+  spiff merge --interpolation "$dir/auto/configure"
+}
+
+etcdctl()
+{
+  #  --endpoints=\[127.0.0.1:2379\] \
+
+  unset ETCDCTL_API
+  export ETCDCTL_CACERT="$dir/gen/ca/ca-cert.pem"
+  export ETCDCTL_CERT="$dir/gen/etcd/client/cert.pem"
+  export ETCDCTL_KEY="$dir/gen/etcd/client/key.pem"
+  "$dir/etcd/current/etcdctl" \
+    "$@"
+}
+
+etcd()
+{
+  "$dir/etcd/current/etcd" \
+    --name kube \
+    --data-dir="$dir/data" \
+    --cert-file="$dir/gen/etcd/server/cert.pem" \
+    --key-file="$dir/gen/etcd/server/key.pem" \
+    --advertise-client-urls=https://127.0.0.1:2379 \
+    --listen-client-urls=https://127.0.0.1:2379 \
+    "$@"
+}
+
+apiserver()
+{
+  "$dir/kube/kube-apiserver" \
+     --etcd-servers https://127.0.0.1:2379 \
+     --etcd-cafile "$dir/gen/ca/ca-cert.pem" \
+     --etcd-certfile "$dir/gen/etcd/client/cert.pem" \
+     --etcd-keyfile "$dir/gen/etcd/client/key.pem" \
+     --service-cluster-ip-range=10.96.0.0/24 \
+     --service-account-key-file="$dir/gen/kube/sa/cert.pem" \
+     --service-account-signing-key-file="$dir/gen/kube/sa/key.pem" \
+     --service-account-issuer=api \
+     --tls-cert-file="$dir/gen/kube/server/cert.pem" \
+     --tls-private-key-file="$dir/gen/kube/server/key.pem" \
+     --client-ca-file="$dir/gen/ca/ca-cert.pem" \
+     "$@"
+}
+
+kctl()
+{
+   kubectl --kubeconfig "$dir/gen/kube/kubeconfig" "$@"
+}
+
+case "$(basename "${BASH_SOURCE[0]}")" in
+  configure)
+    configure "$@";;
+  etcd)
+    etcd "$@";;
+  etcdctl)
+    etcdctl "$@";; 
+  kube-apiserver)
+    apiserver "$@";; 
+  kubectl)
+    kctl "$@";; 
+  *)
+    echo "invalid command $0" >&2
+    exit 1;;
+esac
+
+

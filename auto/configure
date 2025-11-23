@@ -1,0 +1,163 @@
+dir: (( __ctx.DIR "/../gen" ))
+helper:
+  <<<: (( &temporary ))
+  path: (( |p|-> dir "/" p ))
+  write: (( |p,v|-> write(_.path(p),v) ))
+
+ca:
+  spec:
+    <<<: (( &temporary ))
+    organization: Mandelsoft
+    commonName: ca.mandelsoft.de
+    privateKey: (( key ))
+    isCA: true
+    usage:
+    - Signature
+    - KeyEncipherment
+
+  key: (( x509genkey(2048) ))
+  cert: (( x509cert(spec) ))
+
+etcd:
+  server:
+    spec:
+      <<<: (( &temporary ))
+      organization: Mandelsoft
+      commonName: etcd.mandelsoft.de
+      caCert: (( ca.cert ))
+      caPrivateKey: (( ca.key ))
+      publicKey: (( x509publickey(key) ))
+      hosts:
+      - localhost
+      - (( kube.address ))
+      usage:
+      - ServerAuth
+      - ClientAuth
+      - CertSign
+      - Signature
+
+    key: (( x509genkey(2048) ))
+    cert: (( x509cert(spec) ))
+
+
+ 
+  client:
+    spec:
+      <<<: (( &temporary ))
+      organization: Mandelsoft
+      commonName: client.etcd.mandelsofr.de
+      caCert: (( ca.cert ))
+      caPrivateKey: (( ca.key ))
+      publicKey: (( x509publickey(key) ))
+      usage:
+      - ServerAuth
+      - ClientAuth
+      - CertSign
+
+    key: (( x509genkey(2048) ))
+    cert: (( x509cert(spec) ))
+
+kube:
+  address: 127.0.0.1
+  serviceip: 10.96.0.1
+  sa:
+    spec:
+      <<<: (( &temporary ))
+      organization: Mandelsoft
+      commonName: sa.kube.mandelsofr.de
+      caCert: (( ca.cert ))
+      caPrivateKey: (( ca.key ))
+      publicKey: (( x509publickey(key) ))
+      usage:
+      - Signature
+      - CertSign
+
+    key: (( x509genkey(2048) ))
+    cert: (( x509cert(spec) ))
+
+  server:
+    spec:
+      <<<: (( &temporary ))
+      organization: Mandelsoft
+      commonName: api.mandelsoft.de
+      caCert: (( ca.cert ))
+      caPrivateKey: (( ca.key ))
+      publicKey: (( x509publickey(key) ))
+      hosts:
+      - localhost
+      - (( kube.address ))
+      - (( serviceip ))
+      - kubernetes
+      - kubernetes.default
+      - kubernetes.default.svc
+      - kubernetes.default.svc.cluster
+      - kubernetes.default.svc.cluster.local
+      usage:
+      - ServerAuth
+      - ClientAuth
+      - KeyEncipherment
+      - DataEncipherment
+      
+    key: (( x509genkey(2048) ))
+    cert: (( x509cert(spec) ))
+
+  client:
+    spec:
+      <<<: (( &temporary ))
+      organization: system:masters
+      commonName: admin
+      caCert: (( ca.cert ))
+      caPrivateKey: (( ca.key ))
+      publicKey: (( x509publickey(key) ))
+      usage:
+      - Signature
+      - ClientAuth
+      - KeyEncipherment
+
+    key: (( x509genkey(2048) ))
+    cert: (( x509cert(spec) ))
+
+  kubeconfig:
+    apiVersion: v1
+    clusters:
+    - cluster:
+        certificate-authority-data: (( base64(ca.cert) ))
+        server: "https://(( kube.address )):6443"
+      name: local-apiserver
+    contexts:
+    - context:
+        cluster: local-apiserver
+        user: admin
+      name: default
+    current-context: default
+    kind: Config
+    preferences: {}
+    users:
+    - name: admin
+      user:
+        client-certificate-data: (( base64(kube.client.cert) ))
+        client-key-data: (( base64(kube.client.key) ))
+
+write:
+  <<<: (( &temporary ))
+  mkdir: (( exec(["mkdir","-p"] map[["ca", "etcd/server", "etcd/client", "kube/server", "kube/sa", "kube/client"]|helper.path]) ))
+  cakey: (( mkdir helper.write("ca/ca-key.pem", ca.key) ))
+  cacrt: (( mkdir helper.write("ca/ca-cert.pem", ca.cert) ))
+
+  etcdsvckey: (( mkdir helper.write("etcd/server/key.pem", etcd.server.key) ))
+  etcdsvccrt: (( mkdir helper.write("etcd/server/cert.pem", etcd.server.cert) ))
+
+  etcdcltkey: (( mkdir helper.write("etcd/client/key.pem", etcd.client.key) ))
+  etcdcltcrt: (( mkdir helper.write("etcd/client/cert.pem", etcd.client.cert) ))
+
+  kubesakey: (( mkdir helper.write("kube/sa/key.pem", kube.sa.key) ))
+  kubesacrt: (( mkdir helper.write("kube/sa/cert.pem", kube.sa.cert) ))
+
+  kubesvckey: (( mkdir helper.write("kube/server/key.pem", kube.server.key) ))
+  kubesvccrt: (( mkdir helper.write("kube/server/cert.pem", kube.server.cert) ))
+
+  kubecltkey: (( mkdir helper.write("kube/client/key.pem", kube.client.key) ))
+  kubecltcrt: (( mkdir helper.write("kube/client/cert.pem", kube.client.cert) ))
+
+  kubeconfig: (( mkdir helper.write("kube/kubeconfig", kube.kubeconfig) ))
+
